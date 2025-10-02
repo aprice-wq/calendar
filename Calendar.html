@@ -1,0 +1,658 @@
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vacation and WFH Calendar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px; /* Use gap for separation */
+            background-color: #e2e8f0; /* slate-200, for grid lines */
+            border: 1px solid #e2e8f0; /* slate-200 */
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        .day-cell {
+            transition: all 0.2s ease-in-out;
+            position: relative;
+            min-height: 5rem; /* 80px */
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 4px;
+            background-color: #fff; /* Default background */
+        }
+        .day-cell:hover {
+            transform: none; /* Disable scaling to prevent layout shifts */
+            filter: brightness(95%); /* Universal hover effect */
+        }
+        .day-number {
+            font-weight: 500;
+        }
+        .note-text {
+            font-size: 0.75rem; /* 12px */
+            line-height: 1rem; /* 16px */
+            color: #475569; /* slate-600 */
+            word-break: break-word; /* Wrap long words */
+            text-align: center;
+            margin-top: 2px;
+        }
+        .hours-badge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0 6px;
+            border-radius: 9999px;
+            margin-top: 4px;
+        }
+        /* Custom spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl bg-white rounded-2xl shadow-lg p-6 md:p-8">
+        <header class="text-center mb-6">
+            <h1 class="text-xl md:text-2xl font-bold text-slate-900">Vacation and WFH Calendar</h1>
+            <p class="text-slate-500 mt-2">An intelligent way to manage your schedule and track your time.</p>
+        </header>
+
+        <!-- AI Input Section -->
+        <div class="mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200 hidden">
+            <label for="ai-input" class="block text-sm font-medium text-slate-700 mb-2">Add events using natural language:</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="text" id="ai-input" class="flex-grow w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="e.g., 'Vacation from next Monday to Friday'">
+                <button id="add-event-btn" class="bg-indigo-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200 flex items-center justify-center">
+                    <svg id="button-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    <span id="button-text">Add Event</span>
+                    <div id="button-spinner" class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                </button>
+            </div>
+             <p class="text-xs text-slate-500 mt-2">Try things like "WFH every Friday this month", "Off day on Oct 31st", or "Vacation next week".</p>
+        </div>
+        
+        <!-- Hours Tracker Section -->
+        <div class="mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <h3 class="text-lg font-semibold text-center mb-4 text-slate-800">Calculated Hours</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
+                <div>
+                    <p class="block text-sm font-medium text-slate-700 mb-1">Total WFH Hours:</p>
+                    <p id="wfh-hours-display" class="text-2xl font-bold text-sky-600">0</p>
+                </div>
+                <div>
+                    <p class="block text-sm font-medium text-slate-700 mb-1">Total Vacation Hours:</p>
+                    <p id="vacation-hours-display" class="text-2xl font-bold text-emerald-600">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jump to Date Section -->
+        <div class="mb-4 flex flex-col sm:flex-row items-center justify-center gap-2">
+            <label for="date-picker" class="text-sm font-medium text-slate-700">Jump to Date:</label>
+            <input type="date" id="date-picker" class="px-3 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            <button id="jump-to-date-btn" class="bg-slate-200 text-slate-700 px-4 py-1 rounded-md font-semibold hover:bg-slate-300 transition">Go</button>
+        </div>
+
+
+        <!-- Calendar Section -->
+        <div class="bg-white">
+            <div class="flex items-center justify-between mb-4">
+                <button id="prev-month" class="p-2 rounded-full hover:bg-slate-100 transition">
+                    <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <h2 id="month-year" class="text-xl md:text-2xl font-semibold text-slate-800"></h2>
+                <button id="next-month" class="p-2 rounded-full hover:bg-slate-100 transition">
+                    <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+            <div class="calendar-grid text-sm font-medium text-slate-500 mb-2 text-center">
+                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+            </div>
+            <div id="calendar-days" class="calendar-grid">
+                <!-- Day cells will be generated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm">
+            <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-sky-500 mr-2"></span>Work From Home</div>
+            <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-emerald-500 mr-2"></span>Vacation</div>
+            <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-rose-500 mr-2"></span>Off Day</div>
+        </div>
+        
+        <!-- AI Summary Section -->
+        <div id="ai-summary-container" class="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200 hidden">
+            <h3 class="font-semibold text-slate-800 mb-2">This Month's AI Summary</h3>
+            <div id="ai-summary" class="text-slate-600 text-sm"></div>
+            <div id="summary-loader" class="flex justify-center items-center py-4">
+            <div class="loader"></div>
+        </div>
+    </div>
+
+    <!-- Modal for messages -->
+    <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-center">
+            <p id="modal-message" class="text-slate-700"></p>
+            <button id="close-modal-btn" class="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">Close</button>
+        </div>
+    </div>
+
+    <!-- Modal for editing events -->
+    <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-semibold text-slate-800 mb-4 text-center" id="edit-modal-title">Edit Event</h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Event Type:</label>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2" id="event-type-selector">
+                    <button data-event-type="wfh" class="edit-event-btn w-full bg-sky-500 text-white px-4 py-2 rounded-md hover:bg-sky-600 transition">WFH</button>
+                    <button data-event-type="vacation" class="edit-event-btn w-full bg-emerald-500 text-white px-4 py-2 rounded-md hover:bg-emerald-600 transition">Vacation</button>
+                    <button data-event-type="offday" class="edit-event-btn w-full bg-rose-500 text-white px-4 py-2 rounded-md hover:bg-rose-600 transition">Off Day</button>
+                </div>
+            </div>
+
+            <div id="hours-input-container" class="mb-4 hidden">
+                 <label for="event-hours" class="block text-sm font-medium text-slate-700 mb-2">Hours for this day:</label>
+                 <input type="number" id="event-hours" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., 8">
+            </div>
+
+            <div class="mb-6">
+                <label for="event-note" class="block text-sm font-medium text-slate-700 mb-2">Note (optional):</label>
+                <textarea id="event-note" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="Add a note for this day..."></textarea>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button id="save-event-btn" class="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition font-semibold">Save Changes</button>
+                <button id="clear-event-btn" class="w-full bg-slate-500 text-white px-4 py-2 rounded-md hover:bg-slate-600 transition">Clear Day</button>
+            </div>
+            <div class="text-center">
+                <button id="cancel-edit-btn" class="mt-4 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- STATE ---
+    let currentDate = new Date();
+    let editingDateStr = null; 
+    let selectedEventType = null;
+
+    const toLocalDateString = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    
+    // Updated events structure to include notes and hours
+    let events = {}; 
+    const eventColors = {
+        wfh: 'bg-sky-500 text-white',
+        vacation: 'bg-emerald-500 text-white',
+        offday: 'bg-rose-500 text-white'
+    };
+    const eventNames = {
+        wfh: 'Work From Home',
+        vacation: 'Vacation',
+        offday: 'Off Day'
+    };
+
+    // --- DOM ELEMENTS ---
+    const monthYearEl = document.getElementById('month-year');
+    const calendarDaysEl = document.getElementById('calendar-days');
+    const prevMonthBtn = document.getElementById('prev-month');
+    const nextMonthBtn = document.getElementById('next-month');
+    const addEventBtn = document.getElementById('add-event-btn');
+    const aiInput = document.getElementById('ai-input');
+    const buttonText = document.getElementById('button-text');
+    const buttonIcon = document.getElementById('button-icon');
+    const buttonSpinner = document.getElementById('button-spinner');
+    const modal = document.getElementById('message-modal');
+    const modalMessage = document.getElementById('modal-message');
+    const closeModalBtn = document.getElementById('close-modal-btn');
+    const aiSummaryContainer = document.getElementById('ai-summary-container');
+    const aiSummaryEl = document.getElementById('ai-summary');
+    const summaryLoader = document.getElementById('summary-loader');
+    const editModal = document.getElementById('edit-modal');
+    const editModalTitle = document.getElementById('edit-modal-title');
+    const editEventBtns = document.querySelectorAll('.edit-event-btn');
+    const eventTypeSelector = document.getElementById('event-type-selector');
+    const eventNoteEl = document.getElementById('event-note');
+    const saveEventBtn = document.getElementById('save-event-btn');
+    const clearEventBtn = document.getElementById('clear-event-btn');
+    const cancelEditBtn = document.getElementById('cancel-edit-btn');
+    const datePicker = document.getElementById('date-picker');
+    const jumpToDateBtn = document.getElementById('jump-to-date-btn');
+    const wfhHoursDisplay = document.getElementById('wfh-hours-display');
+    const vacationHoursDisplay = document.getElementById('vacation-hours-display');
+    const hoursInputContainer = document.getElementById('hours-input-container');
+    const eventHoursInput = document.getElementById('event-hours');
+
+
+    // --- DATA PERSISTENCE & CALCULATION ---
+    const calculateTotalHours = () => {
+        let totalWfh = 0;
+        let totalVacation = 0;
+        for (const date in events) {
+            const event = events[date];
+            if (event.type === 'wfh' && event.hours) {
+                totalWfh += parseFloat(event.hours);
+            } else if (event.type === 'vacation' && event.hours) {
+                totalVacation += parseFloat(event.hours);
+            }
+        }
+        wfhHoursDisplay.textContent = totalWfh;
+        vacationHoursDisplay.textContent = totalVacation;
+    };
+
+    const saveData = () => {
+        const appData = { events: events };
+        localStorage.setItem('aiCalendarData', JSON.stringify(appData));
+        calculateTotalHours(); // Recalculate totals every time data is saved
+    };
+
+    const loadData = () => {
+        const savedData = localStorage.getItem('aiCalendarData');
+        if (savedData) {
+            const appData = JSON.parse(savedData);
+            events = appData.events || {};
+        }
+        calculateTotalHours(); // Calculate totals on initial load
+    };
+
+    // --- CALENDAR LOGIC ---
+    const renderCalendar = () => {
+        calendarDaysEl.innerHTML = '';
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        monthYearEl.textContent = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+        const firstDayOfMonth = new Date(year, month, 1);
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+        const daysInMonth = lastDayOfMonth.getDate();
+        const startDayOfWeek = firstDayOfMonth.getDay();
+
+        for (let i = 0; i < startDayOfWeek; i++) {
+            const emptyCell = document.createElement('div');
+            emptyCell.className = 'bg-slate-50'; // Make empty cells slightly different
+            calendarDaysEl.appendChild(emptyCell);
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dayCell = document.createElement('div');
+            dayCell.classList.add('day-cell', 'w-full', 'cursor-pointer');
+
+            const dayNumber = document.createElement('span');
+            dayNumber.textContent = day;
+            dayNumber.className = 'day-number';
+            dayCell.appendChild(dayNumber);
+            
+            const cellDate = new Date(year, month, day);
+            const dateStr = toLocalDateString(cellDate);
+            const event = events[dateStr];
+
+            if (event) {
+                let titleText = '';
+                // Apply event type styling
+                if (event.type) {
+                    dayCell.classList.add(...eventColors[event.type].split(' '));
+                    dayNumber.classList.add('text-white');
+                    titleText = eventNames[event.type];
+                }
+                // Display hours badge
+                if (event.hours && event.hours > 0) {
+                    const hoursEl = document.createElement('div');
+                    hoursEl.textContent = `${event.hours}h`;
+                    hoursEl.className = 'hours-badge bg-white/20 text-white';
+                    dayCell.appendChild(hoursEl);
+                }
+                // Display note
+                if (event.note) {
+                    const noteEl = document.createElement('p');
+                    noteEl.textContent = event.note;
+                    noteEl.className = 'note-text';
+                    if (event.type) {
+                        noteEl.classList.add('text-white', 'opacity-90');
+                    }
+                    dayCell.appendChild(noteEl);
+                    titleText += `\nNote: ${event.note}`;
+                }
+                dayCell.title = titleText;
+            }
+
+            const today = new Date();
+            if (cellDate.toDateString() === today.toDateString()) {
+                if (!event || !event.type) {
+                    dayCell.classList.add('bg-indigo-100');
+                    dayNumber.classList.add('text-indigo-700', 'font-bold');
+                } else {
+                    dayCell.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-1', 'z-10');
+                }
+            }
+
+            dayCell.addEventListener('click', () => openEditModal(dateStr));
+            calendarDaysEl.appendChild(dayCell);
+        }
+        updateAISummary();
+    };
+
+    // --- MODAL LOGIC ---
+    const showModal = (message) => {
+        modalMessage.textContent = message;
+        modal.classList.remove('hidden');
+    };
+
+    const hideModal = () => {
+        modal.classList.add('hidden');
+    };
+
+    // --- EDIT MODAL LOGIC ---
+    const openEditModal = (dateStr) => {
+        editingDateStr = dateStr;
+        const event = events[dateStr] || {};
+        selectedEventType = event.type || null;
+        
+        updateEventTypeSelectionUI();
+        toggleHoursInputVisibility();
+
+        eventNoteEl.value = event.note || '';
+        eventHoursInput.value = event.hours || '';
+        
+        const date = new Date(dateStr + 'T00:00:00');
+        editModalTitle.textContent = `Details for ${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`;
+        editModal.classList.remove('hidden');
+    };
+
+    const closeEditModal = () => {
+        editingDateStr = null;
+        selectedEventType = null;
+        editModal.classList.add('hidden');
+    };
+    
+    const toggleHoursInputVisibility = () => {
+        if (selectedEventType === 'wfh' || selectedEventType === 'vacation') {
+            hoursInputContainer.classList.remove('hidden');
+        } else {
+            hoursInputContainer.classList.add('hidden');
+            eventHoursInput.value = '';
+        }
+    };
+
+    const updateEventTypeSelectionUI = () => {
+        editEventBtns.forEach(btn => {
+            if (btn.dataset.eventType === selectedEventType) {
+                btn.classList.add('ring-2', 'ring-offset-2', 'ring-indigo-500');
+            } else {
+                btn.classList.remove('ring-2', 'ring-offset-2', 'ring-indigo-500');
+            }
+        });
+    };
+
+
+    // --- AI INTEGRATION ---
+    const callGeminiAPI = async (payload, retries = 3, delay = 1000) => {
+        const apiKey = ""; // Canvas will provide the key
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`API Error: ${error.error?.message || response.statusText}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Attempt ${i + 1} failed:`, error);
+                if (i === retries - 1) throw error;
+                await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+            }
+        }
+    };
+    
+    const handleAIInput = async () => {
+        const userInput = aiInput.value.trim();
+        if (!userInput) {
+            showModal("Please enter an event description.");
+            return;
+        }
+
+        buttonText.classList.add('hidden');
+        buttonIcon.classList.add('hidden');
+        buttonSpinner.classList.remove('hidden');
+        addEventBtn.disabled = true;
+        
+        const schema = {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    eventType: {
+                        type: "STRING",
+                        enum: ["wfh", "vacation", "offday"]
+                    },
+                    date: {
+                        type: "STRING",
+                        description: "The date of the event in YYYY-MM-DD format."
+                    }
+                },
+                required: ["eventType", "date"]
+            }
+        };
+
+        const systemPrompt = `You are an intelligent calendar assistant. Your task is to analyze user text and extract event details. The current date is ${new Date().toDateString()}. You MUST identify the event type and all relevant dates.
+        - Event types must be one of: 'wfh', 'vacation', 'offday'.
+        - Dates must be in 'YYYY-MM-DD' format.
+        - If the user specifies a range (e.g., 'Monday to Friday'), create a separate event object for each day in that range.
+        - If a year is not specified, assume the current year (${new Date().getFullYear()}) or the next year if the date has passed.
+        - If no valid events are found, return an empty array.`;
+
+        const payload = {
+            contents: [{
+                parts: [{ text: `Based on the current date of ${new Date().toISOString()}, parse the following user request: "${userInput}"` }]
+            }],
+            systemInstruction: {
+                parts: [{ text: systemPrompt }]
+            },
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: schema
+            }
+        };
+
+        try {
+            const result = await callGeminiAPI(payload);
+            const candidate = result.candidates?.[0];
+
+            if (!candidate || !candidate.content?.parts?.[0]?.text) {
+                throw new Error("Invalid response structure from AI.");
+            }
+            
+            const parsedJsonText = candidate.content.parts[0].text;
+            const newEvents = JSON.parse(parsedJsonText);
+
+            if (newEvents.length === 0) {
+                showModal("I couldn't find any specific dates in your request. Please try being more specific, like 'WFH next Tuesday'.");
+            } else {
+                let eventsAddedCount = 0;
+                newEvents.forEach(event => {
+                    if (event.date && event.eventType) {
+                        events[event.date] = { type: event.eventType, note: '', hours: 0 };
+                        eventsAddedCount++;
+                    }
+                });
+                renderCalendar();
+                saveData();
+                aiInput.value = '';
+                showModal(`Successfully added ${eventsAddedCount} event(s)!`);
+            }
+        } catch (error) {
+            console.error('Error processing AI request:', error);
+            showModal("Sorry, I had trouble understanding that. Please check your request or try again. Error: " + error.message);
+        } finally {
+            buttonText.classList.remove('hidden');
+            buttonIcon.classList.remove('hidden');
+            buttonSpinner.classList.add('hidden');
+            addEventBtn.disabled = false;
+        }
+    };
+
+    const updateAISummary = async () => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const monthName = currentDate.toLocaleString('default', { month: 'long' });
+
+        const monthEvents = Object.entries(events)
+            .filter(([dateStr]) => {
+                const eventDate = new Date(dateStr + 'T00:00:00'); 
+                return eventDate.getFullYear() === year && eventDate.getMonth() === month;
+            })
+            .map(([date, eventData]) => ({ date, type: eventNames[eventData.type], hours: eventData.hours }));
+            
+        if (monthEvents.length === 0) {
+            aiSummaryContainer.classList.add('hidden');
+            return;
+        }
+
+        aiSummaryContainer.classList.remove('hidden');
+        aiSummaryEl.classList.add('hidden');
+        summaryLoader.classList.remove('hidden');
+
+        const systemPrompt = `You are a helpful assistant. Summarize the user's schedule for the given month in a friendly, concise, and helpful tone. Provide a brief overview.`;
+        const userPrompt = `Here are my scheduled events for ${monthName} ${year}. Please provide a short summary. Events: ${JSON.stringify(monthEvents)}`;
+        
+        const payload = {
+            contents: [{ parts: [{ text: userPrompt }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+        };
+
+        try {
+            const result = await callGeminiAPI(payload);
+            const summaryText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Could not generate a summary.";
+            aiSummaryEl.textContent = summaryText;
+        } catch (error) {
+            console.error("Error generating summary:", error);
+            aiSummaryEl.textContent = "Could not generate a summary at this time.";
+        } finally {
+            summaryLoader.classList.add('hidden');
+            aiSummaryEl.classList.remove('hidden');
+        }
+    };
+
+
+    // --- EVENT LISTENERS ---
+    prevMonthBtn.addEventListener('click', () => {
+        currentDate.setMonth(currentDate.getMonth() - 1);
+        renderCalendar();
+    });
+
+    nextMonthBtn.addEventListener('click', () => {
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        renderCalendar();
+    });
+
+    jumpToDateBtn.addEventListener('click', () => {
+        const selectedDate = datePicker.value;
+        if (selectedDate) {
+            currentDate = new Date(selectedDate + 'T00:00:00');
+            renderCalendar();
+        }
+    });
+
+    addEventBtn.addEventListener('click', handleAIInput);
+    aiInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleAIInput();
+        }
+    });
+
+    closeModalBtn.addEventListener('click', hideModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            hideModal();
+        }
+    });
+    
+    // --- EDIT MODAL EVENT LISTENERS ---
+    editEventBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const eventType = btn.dataset.eventType;
+            selectedEventType = selectedEventType === eventType ? null : eventType;
+            updateEventTypeSelectionUI();
+            toggleHoursInputVisibility();
+        });
+    });
+
+    saveEventBtn.addEventListener('click', () => {
+        if (!editingDateStr) return;
+        
+        const note = eventNoteEl.value.trim();
+        const type = selectedEventType;
+        const hours = parseFloat(eventHoursInput.value) || 0;
+
+        if (!type && !note && hours === 0) {
+            delete events[editingDateStr];
+        } else {
+            events[editingDateStr] = { type, note, hours };
+        }
+        
+        renderCalendar();
+        saveData();
+        closeEditModal();
+    });
+
+    clearEventBtn.addEventListener('click', () => {
+        if (editingDateStr) {
+            delete events[editingDateStr];
+            renderCalendar();
+            saveData();
+            closeEditModal();
+        }
+    });
+
+    cancelEditBtn.addEventListener('click', closeEditModal);
+
+    editModal.addEventListener('click', (e) => {
+        if (e.target === editModal) {
+            closeEditModal();
+        }
+    });
+
+    // --- INITIALIZATION ---
+    loadData();
+    renderCalendar();
+});
+</script>
+</body>
+</html>
+
+
+
